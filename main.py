@@ -6,8 +6,18 @@ list_of_features = ["Day of Week", "Road Type", "Junction Detail", "Junction Con
                     "Light Conditions", "weather_conditions", "road_surface_conditions", "Urban or Rural area", "Vehicle Type",
                     "Vehicle Manoeuvre", "vehicle_location-restricted_lane", "Skidding and overturning",
                     "vehicle_leaving_carriageway", "1st Point of impact", "Sex of Driver", "age_of_driver", "age_of_vehicle",
-                    "Car Passenger", "Casualty Type", "speed_limit", "number_of_vehicles", "number_of_casualties"
+                    "Car Passenger", "Casualty Type", "speed_limit", "number_of_vehicles"
                     ]
+
+dummies = ["Day of Week", "Road Type", "Junction Detail", "Junction Control",
+                    "Light Conditions", "weather_conditions", "Vehicle Type",
+                    "Vehicle Manoeuvre", "vehicle_location-restricted_lane", "Skidding and overturning",
+                    "vehicle_leaving_carriageway", "1st Point of impact",
+                    "Car Passenger", "Casualty Type"]
+dummies = [a.lower().replace(" ", "_") for a in dummies]
+
+treatments = ["1st Point of impact", "car Passenger", "Sex of Driver", "road_surface_conditions"]
+treatments = [a.lower().replace(" ", "_") for a in treatments]
 
 hidden_confounders = [
                     "Special Conditions at Site", "Carriageway Hazards", "Towing and Articulation",
@@ -24,15 +34,24 @@ potential_outcome = "number_of_casualties"
 
 def clean_dataset():
     lof = [a.lower().replace(" ", "_") for a in list_of_features]
-    lof += [outcome.lower().replace(" ", "_")]
+    lof += [outcome.lower().replace(" ", "_"), 'number_of_casualties']
     print(len(lof))
     df = pd.read_csv("archive/Kaagle_Upload.csv")
     df = df[lof]
+
+    df["road_surface_conditions"] = df["road_surface_conditions"].replace(to_replace=[i for i in range(3, 8)], value=None)
+    df["road_surface_conditions"] = df["road_surface_conditions"].replace(to_replace=2, value=0)
+    df["sex_of_driver"] = df["sex_of_driver"].replace(to_replace=3, value=None)
+    df["sex_of_driver"] = df["sex_of_driver"].replace(to_replace=2, value=0)
+    df["urban_or_rural_area"] = df["urban_or_rural_area"].replace(to_replace=3, value=None)
+    df["urban_or_rural_area"] = df["urban_or_rural_area"].replace(to_replace=2, value=0)
+    df["weather_conditions"] = df["weather_conditions"].replace(to_replace=9, value=None)
+
     df = df.replace(to_replace=-1, value=None)
     df = df.dropna()
     print(len(df))
+
     df[outcome] = df[outcome].replace(to_replace=2, value=1)
-    # print(df["vehicle_location-restricted_lane"].unique())
     df1 = df[df[outcome] == 1]
     df3 = df[df[outcome] == 3]
     df3 = df3.sample(n=60000)
@@ -94,6 +113,26 @@ def get_graphs(df: pd.DataFrame):
     plt.savefig("casualties.jpeg")
     plt.show()
 
+    # speed limit
+    severe_speed = list(severe_df["speed_limit"])
+    not_severe_speed = list(not_severe_df["speed_limit"])
+
+    severe_labels = [i + 1 for i in range(10, 80, 10)]
+    not_severe_labels = [i - 1 for i in range(10, 80, 10)]
+
+    severe_counter = Counter(severe_speed)
+    not_severe_counter = Counter(not_severe_speed)
+    severe_list = [severe_counter[i] / len(severe_speed) for i in range(10, 80, 10)]
+    not_severe_list = [not_severe_counter[i] / len(not_severe_speed) for i in range(10, 80, 10)]
+
+    plt.bar(severe_labels, severe_list, color="red", label="severe", width=2)
+    plt.bar(not_severe_labels, not_severe_list, color="blue", label="not severe", width=2)
+    plt.title("Speed Limit Distribution")
+    plt.legend()
+    # plt.xticks(range(1, 10), ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"])
+    plt.savefig("Speed Limit Distribution.jpeg")
+    plt.show()
+
 
 def numeric_data(df: pd.DataFrame):
     severe_df = df[df[outcome] == 1]
@@ -118,6 +157,7 @@ def numeric_data(df: pd.DataFrame):
     severe_impact = list(severe_df["1st_point_of_impact"])
     not_severe_impact = list(not_severe_df["1st_point_of_impact"])
 
+
     counter = 0
     for e in severe_impact:
         if e == 1:
@@ -130,10 +170,24 @@ def numeric_data(df: pd.DataFrame):
             counter += 1
     print(f"{counter / len(not_severe_impact) * 100}% of the not severe accidents are front impact")
 
+    # car passenger
+    severe_passenger = list(severe_df["car_passenger"])
+    not_severe_passenger = list(not_severe_df["car_passenger"])
+
+    severe_counter = Counter(severe_passenger)
+    not_severe_counter = Counter(not_severe_passenger)
+
+    for key in severe_counter.keys():
+        print(f"{severe_counter[key]/len(severe_passenger)*100}% of the severe accidents are {key}")
+        print(f"{not_severe_counter[key] / len(not_severe_passenger) * 100}% of the not severe accidents are {key}")
+
 
 if __name__ == '__main__':
+    clean_dataset()
     df = pd.read_csv("full_data.csv")
-    # get_graphs(df)
+    ls = df.speed_limit.unique()
+    print(ls)
+    get_graphs(df)
     numeric_data(df)
     pass
 
