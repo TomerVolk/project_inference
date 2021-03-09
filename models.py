@@ -4,7 +4,8 @@ from sklearn.neighbors import KNeighborsRegressor
 import pandas as pd
 import numpy as np
 import csv
-from main import list_of_features, outcome, treatments, dummies
+from preprocess import list_of_features, outcome, treatments, dummies
+import pickle
 
 
 def get_propensity_score(data: pd.DataFrame):
@@ -129,18 +130,23 @@ def calc_for_dataframe(data_name, outcome, treatment=None):
     cols_list = [a.lower().replace(" ", "_") for a in list_of_features] + [outcome]
     data = data[cols_list]
     dummy_cols = dummies
-    dummy_cols.remove(treatment)
+    if treatment in dummy_cols:
+        dummy_cols.remove(treatment)
     data = pd.get_dummies(data, columns=dummies)
 
     if treatment == "1st_point_of_impact":
-        data[treatment] = data[treatment].replace(to_replace=[0, 2, 3, 4], value=0)
+        data[treatment] = data[treatment].replace(to_replace=[0, 2, 3, 4], value=5)
+        data[treatment] = data[treatment].replace(to_replace=1, value=0)
+        data[treatment] = data[treatment].replace(to_replace=5, value=1)
     if treatment == "car_passenger":
-        data[treatment] = data[treatment].replace(to_replace=2, value=1)
+        data[treatment] = data[treatment].replace(to_replace=[2, 1], value=2)
+        data[treatment] = data[treatment].replace(to_replace=0, value=1)
+        data[treatment] = data[treatment].replace(to_replace=2, value=0)
 
     data = data.rename(columns={treatment: "T", outcome: "Y"})
 
     for col in data.columns:
-        if col != outcome:
+        if col not in ["Y", "T"]:
             col_lst = list(data[col])
             min_max_scaler = preprocessing.StandardScaler()
             col_lst = np.array(col_lst).reshape(-1, 1)
@@ -153,18 +159,25 @@ def calc_for_dataframe(data_name, outcome, treatment=None):
     print(s)
     t = t_learner(data)
     print(t)
-    match = matching(data)
-    print(match)
+    # match = matching(data)
+    # print(match)
     print("\n")
-    return [ipw, s, t, match], propensity_list
+    # return [ipw, s, t, match], propensity_list
+    return [ipw, s, t], propensity_list
 
 
 if __name__ == '__main__':
+    file = open("Basic_results.txt", "w")
+    string_to_write = ""
+    prop_dict = {}
     for treat in treatments:
         print(treat)
         ls, prop_list = calc_for_dataframe("full_data.csv", outcome, treat)
-    # att_list1, prop1 = calc_for_dataframe("data1.csv")
-    # att_list2, prop2 = calc_for_dataframe("data2.csv")
+        string_to_write += treat + ": " + str(ls) + "\n\n"
+        prop_dict[treat] = prop_list
+    file.write(string_to_write)
+    file.close()
+    pickle.dump(prop_dict, open("prop_pickle.pkl", "wb"))
     pass
 
 

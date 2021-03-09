@@ -52,8 +52,10 @@ def clean_dataset():
     print(len(df))
 
     df[outcome] = df[outcome].replace(to_replace=2, value=1)
-    df1 = df[df[outcome] == 1]
-    df3 = df[df[outcome] == 3]
+    df[outcome] = df[outcome].replace(to_replace=1, value=0)
+    df[outcome] = df[outcome].replace(to_replace=3, value=1)
+    df1 = df[df[outcome] == 0]
+    df3 = df[df[outcome] == 1]
     df3 = df3.sample(n=60000)
     full_df = pd.concat([df1, df3])
     full_df.to_csv("full_data.csv")
@@ -64,8 +66,8 @@ def get_graphs(df: pd.DataFrame):
     severe_labels = [i+0.15 for i in range(1, 8)]
     not_severe_labels = [i-0.15 for i in range(1, 8)]
 
-    severe_df = df[df[outcome] == 1]
-    not_severe_df = df[df[outcome] == 3]
+    severe_df = df[df[outcome] == 0]
+    not_severe_df = df[df[outcome] == 1]
     severe_list = list(severe_df["day_of_week"])
     not_severe_list = list(not_severe_df["day_of_week"])
 
@@ -135,8 +137,8 @@ def get_graphs(df: pd.DataFrame):
 
 
 def numeric_data(df: pd.DataFrame):
-    severe_df = df[df[outcome] == 1]
-    not_severe_df = df[df[outcome] == 3]
+    severe_df = df[df[outcome] == 0]
+    not_severe_df = df[df[outcome] == 1]
 
     severe_area = list(severe_df["urban_or_rural_area"])
     not_severe_area = list(not_severe_df["urban_or_rural_area"])
