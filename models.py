@@ -57,7 +57,7 @@ def s_learner(data: pd.DataFrame):
     for index, row in points.iterrows():
         data_points.append(list(row))
     y_list = list(data["Y"])
-    model = LinearRegression()
+    model = LogisticRegression(max_iter=1000)
     model.fit(data_points, y_list)
     treated = points[points["T"] == 1]
     zero_t = [0] * len(treated)
@@ -85,9 +85,9 @@ def t_learner(data: pd.DataFrame):
     treated = treated[cols]
     not_treated = not_treated[cols]
 
-    treat_model = LinearRegression()
+    treat_model = LogisticRegression(max_iter=1000)
     treat_model.fit(treated.to_numpy(), treated_y)
-    not_treated_model = LinearRegression()
+    not_treated_model = LogisticRegression(max_iter=1000)
     not_treated_model.fit(not_treated.to_numpy(), not_treated_y)
 
     treat_model_predict = treat_model.predict(treated.to_numpy())
@@ -127,6 +127,7 @@ def matching(data: pd.DataFrame):
 
 def calc_for_dataframe(data_name, outcome, treatment=None):
     data = pd.read_csv(data_name)
+    del data["Unnamed: 0"]
     cols_list = [a.lower().replace(" ", "_") for a in list_of_features] + [outcome]
     data = data[cols_list]
     dummy_cols = dummies
@@ -159,11 +160,11 @@ def calc_for_dataframe(data_name, outcome, treatment=None):
     print(s)
     t = t_learner(data)
     print(t)
-    # match = matching(data)
-    # print(match)
+    match = matching(data)
+    print(match)
     print("\n")
-    # return [ipw, s, t, match], propensity_list
-    return [ipw, s, t], propensity_list
+    return [ipw, s, t, match], propensity_list
+    # return [ipw, s, t], propensity_list
 
 
 if __name__ == '__main__':
