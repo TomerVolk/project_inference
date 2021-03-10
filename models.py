@@ -1,11 +1,14 @@
 from sklearn.linear_model import LogisticRegression, LinearRegression
 from sklearn import preprocessing
-from sklearn.neighbors import KNeighborsRegressor
+from sklearn.neighbors import KNeighborsRegressor, KNeighborsClassifier
 import pandas as pd
 import numpy as np
 import csv
 from preprocess import list_of_features, outcome, treatments, dummies
 import pickle
+import matplotlib.pyplot as plt
+import torch
+from torch.utils.data.dataloader import DataLoader
 
 
 def get_propensity_score(data: pd.DataFrame):
@@ -72,6 +75,37 @@ def s_learner(data: pd.DataFrame):
     return tp - ntp
 
 
+def inception_s_learner(data: pd.DataFrame, treatment):
+    from train import InceptionDataset, evaluate
+    model = torch.load(treatment)
+    cols = list(data.columns)
+    cols.remove("Y")
+    points = data[cols]
+    data_points = []
+    for index, row in points.iterrows():
+        data_points.append(list(row))
+    y_list = list(data["Y"])
+
+    treated = points[points["T"] == 1]
+    zero_t = [0] * len(treated)
+    counter_factual = treated.copy()
+    counter_factual["T"] = zero_t
+    treated = treated.values.tolist()
+    counter_factual = counter_factual.values.tolist()
+
+    treated_dataset = InceptionDataset(treated, zero_t)
+    treated_loader = DataLoader(treated_dataset, batch_size=100)
+    counter_dataset = InceptionDataset(counter_factual, zero_t)
+    counter_loader = DataLoader(counter_dataset, batch_size=100)
+
+    _, treat_predict = evaluate(model, treated_loader, len(treated))
+    _, not_treat_predict = evaluate(model, counter_loader, len(counter_factual))
+
+    tp = sum(treat_predict) / len(treat_predict)
+    ntp = sum(not_treat_predict) / len(not_treat_predict)
+    return tp - ntp
+
+
 def t_learner(data: pd.DataFrame):
     treated = data[data["T"] == 1]
     treated_y = list(treated["Y"])
@@ -112,7 +146,7 @@ def matching(data: pd.DataFrame):
     treated = treated[cols]
     not_treated = not_treated[cols]
 
-    model = KNeighborsRegressor(n_neighbors=1)
+    model = KNeighborsClassifier(n_neighbors=1)
     model.fit(not_treated, not_treated_y)
 
     att = 0
@@ -125,7 +159,21 @@ def matching(data: pd.DataFrame):
     pass
 
 
-def calc_for_dataframe(data_name, outcome, treatment=None):
+def trim_data(df: pd.DataFrame, prop_score, threshold, operand):
+    index_to_delete = []
+    if operand == "bigger":
+        for i in range(len(prop_score)):
+            if prop_score[i] > threshold:
+                index_to_delete.append(i)
+    elif operand == "smaller":
+        for i in range(len(prop_score)):
+            if prop_score[i] < threshold:
+                index_to_delete.append(i)
+    data = df.drop(df.index[index_to_delete])
+    return data
+
+
+def calc_for_dataframe(data_name, outcome, treatment=None, cala_prop=False):
     data = pd.read_csv(data_name)
     del data["Unnamed: 0"]
     cols_list = [a.lower().replace(" ", "_") for a in list_of_features] + [outcome]
@@ -149,25 +197,50 @@ def calc_for_dataframe(data_name, outcome, treatment=None):
     for col in data.columns:
         if col not in ["Y", "T"]:
             col_lst = list(data[col])
-            min_max_scaler = preprocessing.StandardScaler()
+            min_max_scaler = preprocessing.MinMaxScaler()
             col_lst = np.array(col_lst).reshape(-1, 1)
             scaled = min_max_scaler.fit_transform(col_lst)
             data[col] = scaled
     prop_score, propensity_list = get_propensity_score(data)
+
+    if cala_prop:
+        treated_prop = []
+        non_treated_prop = []
+        for i in range(len(data)):
+            if data.iloc[i]["T"] == 1:
+                treated_prop.append(propensity_list[i])
+            else:
+                non_treated_prop.append(propensity_list[i])
+        plt.hist(treated_prop, color="green", label="Treated", alpha=0.5, bins=15)
+        plt.hist(non_treated_prop, color="blue", label="Not Treated", alpha=0.5, bins=15)
+        plt.title(f"{treatment} propensity graph")
+        plt.legend()
+        plt.savefig(f"{treatment} propensity graph")
+        plt.show()
+        return
+
+    if treatment == "car_passenger":
+        data = trim_data(data, propensity_list, 0.85, "bigger")
+
+    if treatment == "road_surface_conditions":
+        data = trim_data(data, propensity_list, 0.4, "smaller")
+
     ipw = calc_ipw(data, prop_score)
     print(ipw)
     s = s_learner(data)
     print(s)
+    s_inception = inception_s_learner(data, treatment)
+    print(s_inception)
     t = t_learner(data)
     print(t)
     match = matching(data)
     print(match)
     print("\n")
-    return [ipw, s, t, match], propensity_list
-    # return [ipw, s, t], propensity_list
+    return [ipw, s, s_inception, t, match], propensity_list
+    # return [ipw, s, s_inception, t], propensity_list
 
 
-if __name__ == '__main__':
+def get_att():
     file = open("Basic_results.txt", "w")
     string_to_write = ""
     prop_dict = {}
@@ -179,6 +252,18 @@ if __name__ == '__main__':
     file.write(string_to_write)
     file.close()
     pickle.dump(prop_dict, open("prop_pickle.pkl", "wb"))
+    pass
+
+
+def get_prop_graph():
+    for treat in treatments:
+        print(treat)
+        calc_for_dataframe("full_data.csv", outcome, treat, cala_prop=True)
+
+
+if __name__ == '__main__':
+    get_att()
+    # get_prop_graph()
     pass
 
 
