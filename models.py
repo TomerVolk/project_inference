@@ -32,6 +32,8 @@ def calc_ipw(data, prop_score):
     y_sum = 0
     right_side_numerator = 0
     right_side_denominator = 0
+    ate_right_side = 0
+    ate_left_side = 0
     treat = list(data["T"])
     y_list = list(data["Y"])
     cols = list(data.columns)
@@ -48,8 +50,13 @@ def calc_ipw(data, prop_score):
         p_list = p_list[0]
         right_side_numerator += (1-t)*y*(p_list[1]/p_list[0])
         right_side_denominator += (1-t)*(p_list[1]/p_list[0])
-    ipw = y_sum/treat_sum - right_side_numerator/right_side_denominator
-    return ipw
+
+        ate_right_side += t*y/p_list[1]
+        ate_left_side += ((1 - t)*y)/(1 - p_list[1])
+
+    ipw_att = y_sum/treat_sum - right_side_numerator/right_side_denominator
+    ipw_ate = (ate_right_side - ate_left_side)/len(data)
+    return ipw_att, ipw_ate
 
 
 def s_learner(data: pd.DataFrame):
@@ -72,7 +79,19 @@ def s_learner(data: pd.DataFrame):
     not_treat_predict = model.predict(counter_factual)
     tp = sum(treat_predict)/len(treat_predict)
     ntp = sum(not_treat_predict)/len(not_treat_predict)
-    return tp - ntp
+    att = tp - ntp
+
+    ones_t = [1] * len(points)
+    zero_t = [0] * len(points)
+    points_copy = points.copy()
+    points_copy["T"] = ones_t
+    treat_predict = model.predict(points_copy.to_numpy())
+    points_copy["T"] = zero_t
+    not_treat_predict = model.predict(points_copy.to_numpy())
+    tp = sum(treat_predict) / len(treat_predict)
+    ntp = sum(not_treat_predict) / len(not_treat_predict)
+    ate = tp - ntp
+    return att, ate
 
 
 def inception_s_learner(data: pd.DataFrame, treatment):
@@ -94,16 +113,35 @@ def inception_s_learner(data: pd.DataFrame, treatment):
     counter_factual = counter_factual.values.tolist()
 
     treated_dataset = InceptionDataset(treated, zero_t)
-    treated_loader = DataLoader(treated_dataset, batch_size=100)
+    treated_loader = DataLoader(treated_dataset, batch_size=100, shuffle=False)
     counter_dataset = InceptionDataset(counter_factual, zero_t)
-    counter_loader = DataLoader(counter_dataset, batch_size=100)
+    counter_loader = DataLoader(counter_dataset, batch_size=100, shuffle=False)
 
     _, treat_predict = evaluate(model, treated_loader, len(treated))
     _, not_treat_predict = evaluate(model, counter_loader, len(counter_factual))
 
     tp = sum(treat_predict) / len(treat_predict)
     ntp = sum(not_treat_predict) / len(not_treat_predict)
-    return tp - ntp
+    att = tp - ntp
+
+    zero_t = [0] * len(points)
+    ones_t = [1] * len(points)
+    points_copy = points.copy()
+    points_copy["T"] = ones_t
+    treated_dataset = InceptionDataset(points_copy.values.tolist(), zero_t)
+    treated_loader = DataLoader(treated_dataset, batch_size=100, shuffle=False)
+    points_copy["T"] = zero_t
+    counter_dataset = InceptionDataset(points_copy.values.tolist(), zero_t)
+    counter_loader = DataLoader(counter_dataset, batch_size=100, shuffle=False)
+
+    _, treat_predict = evaluate(model, treated_loader, len(points))
+    _, not_treat_predict = evaluate(model, counter_loader, len(points))
+
+    tp = sum(treat_predict) / len(treat_predict)
+    ntp = sum(not_treat_predict) / len(not_treat_predict)
+    ate = tp - ntp
+
+    return att, ate
 
 
 def t_learner(data: pd.DataFrame):
@@ -129,8 +167,16 @@ def t_learner(data: pd.DataFrame):
 
     tp = sum(treat_model_predict)/len(treat_model_predict)
     ntp = sum(not_treat_model_predict)/len(not_treat_model_predict)
+    att = tp - ntp
 
-    return tp - ntp
+    treat_model_predict = treat_model.predict(data[cols].to_numpy())
+    not_treat_model_predict = not_treated_model.predict(data[cols].to_numpy())
+
+    tp = sum(treat_model_predict) / len(treat_model_predict)
+    ntp = sum(not_treat_model_predict) / len(not_treat_model_predict)
+    ate = tp - ntp
+
+    return att, ate
 
 
 def matching(data: pd.DataFrame):
@@ -149,13 +195,24 @@ def matching(data: pd.DataFrame):
     model = KNeighborsClassifier(n_neighbors=1)
     model.fit(not_treated, not_treated_y)
 
+    model_for_not_treated = KNeighborsClassifier(n_neighbors=1)
+    model_for_not_treated.fit(treated, treated_y)
+
     att = 0
+    ate = 0
     for index, data_point in enumerate(treated.values):
         pred = model.predict([data_point])[0]
         ite = treated_y[index] - pred
         att += ite
+        ate += ite
     att = att/len(treated)
-    return att
+
+    for index, data_point in enumerate(not_treated.values):
+        pred = model_for_not_treated.predict([data_point])[0]
+        ite = pred - not_treated_y[index]
+        ate += ite
+    ate = ate/len(data)
+    return att, ate
     pass
 
 
@@ -231,18 +288,18 @@ def calc_for_dataframe(data_name, outcome, treatment=None, cala_prop=False):
     if treatment == "road_surface_conditions":
         data = trim_data(data, propensity_list, 0.4, "smaller")
 
-    ipw = calc_ipw(data, prop_score)
-    print(ipw)
-    s = s_learner(data)
-    print(s)
-    s_inception = inception_s_learner(data, treatment)
-    print(s_inception)
-    t = t_learner(data)
-    print(t)
-    match = matching(data)
-    print(match)
+    ipw_att, ipw_ate = calc_ipw(data, prop_score)
+    print(f"{ipw_att}, {ipw_ate}")
+    s_att, s_ate = s_learner(data)
+    print(f"{s_att}, {s_ate}")
+    s_inception_att, s_inception_ate = inception_s_learner(data, treatment)
+    print(f"{s_inception_att}, {s_inception_ate}")
+    t_att, t_ate = t_learner(data)
+    print(f"{t_att}, {t_ate}")
+    match_att, match_ate = matching(data)
+    print(f"{match_att}, {match_ate}")
     print("\n")
-    return [ipw, s, s_inception, t, match], propensity_list
+    return [ipw_att, s_att, s_inception_att, t_att, match_att], [ipw_ate, s_ate, s_inception_ate, t_ate, match_ate] ,propensity_list
     # return [ipw, s, s_inception, t], propensity_list
 
 
@@ -252,8 +309,8 @@ def get_att():
     prop_dict = {}
     for treat in treatments:
         print(treat)
-        ls, prop_list = calc_for_dataframe("full_data.csv", outcome, treat)
-        string_to_write += treat + ": " + str(ls) + "\n\n"
+        ls_att, ls_ate, prop_list = calc_for_dataframe("full_data.csv", outcome, treat)
+        string_to_write += treat + ": " + str(ls_att) + " " + str(ls_ate) + "\n\n"
         prop_dict[treat] = prop_list
     file.write(string_to_write)
     file.close()
