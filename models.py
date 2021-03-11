@@ -178,6 +178,12 @@ def calc_for_dataframe(data_name, outcome, treatment=None, cala_prop=False):
     del data["Unnamed: 0"]
     cols_list = [a.lower().replace(" ", "_") for a in list_of_features] + [outcome]
     data = data[cols_list]
+    data = data[
+        ["age_of_vehicle", "age_of_driver", "car_passenger", "sex_of_driver", "vehicle_type", "vehicle_manoeuvre",
+         "road_type", "urban_or_rural_area", "speed_limit", "number_of_vehicles", "junction_control", "junction_detail",
+         "casualty_type", "skidding_and_overturning", "road_surface_conditions", "weather_conditions",
+         "light_conditions", "1st_point_of_impact", "day_of_week", "vehicle_location-restricted_lane",
+         "vehicle_leaving_carriageway", outcome]]
     dummy_cols = dummies
     if treatment in dummy_cols:
         dummy_cols.remove(treatment)
