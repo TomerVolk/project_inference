@@ -299,7 +299,8 @@ def calc_for_dataframe(data_name, outcome, treatment=None, cala_prop=False):
     match_att, match_ate = matching(data)
     print(f"{match_att}, {match_ate}")
     print("\n")
-    return [ipw_att, s_att, s_inception_att, t_att, match_att], [ipw_ate, s_ate, s_inception_ate, t_ate, match_ate] ,propensity_list
+    return [ipw_att, s_att, s_inception_att, t_att, match_att],\
+           [ipw_ate, s_ate, s_inception_ate, t_ate, match_ate], propensity_list
     # return [ipw, s, s_inception, t], propensity_list
 
 
