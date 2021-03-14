@@ -15,7 +15,7 @@ def get_data_from_txt(txt_path):
                 continue
             treat, res = line.split(":")
             treat = treat.strip()
-            ate, att, _ = res.split("]")
+            att, ate, _ = res.split("]")
             ate = ate.strip() + "]"
             att = att.strip() + "]"
             ate = ast.literal_eval(ate)
